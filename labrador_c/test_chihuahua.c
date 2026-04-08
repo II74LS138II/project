@@ -23,16 +23,37 @@ static double get_time_ms(void) {
 }
 
 // --- 辅助函数：读取文件内容 ---
+// static char* read_file_to_string(const char* filename) {
+//     FILE *f = fopen(filename, "r");
+//     if (!f) return NULL;
+//     fseek(f, 0, SEEK_END);
+//     long length = ftell(f);
+//     fseek(f, 0, SEEK_SET);
+//     char *data = malloc(length + 1);
+//     fread(data, 1, length, f);
+//     fclose(f);
+//     data[length] = '\0';
+//     return data;
+// }
 static char* read_file_to_string(const char* filename) {
-    FILE *f = fopen(filename, "r");
+    FILE *f = fopen(filename, "rb"); // 建议用 "rb" 以二进制模式读取，防止换行符转换干扰 JSON 解析
     if (!f) return NULL;
+
     fseek(f, 0, SEEK_END);
     long length = ftell(f);
     fseek(f, 0, SEEK_SET);
-    char *data = malloc(length + 1);
-    fread(data, 1, length, f);
+
+    char *data = (char *)malloc(length + 1);
+    if (data) {
+        size_t read_bytes = fread(data, 1, length, f);
+        data[read_bytes] = '\0'; // 使用实际读取的长度作为结尾
+        if (read_bytes < (size_t)length && ferror(f)) {
+            free(data);
+            data = NULL;
+        }
+    }
+
     fclose(f);
-    data[length] = '\0';
     return data;
 }
 
@@ -351,22 +372,6 @@ static int test_pack() {
   return 0;
 }
 // ====================================================================
-// 【新增】读取 JSON 的辅助函数
-// ====================================================================
-static char* read_file_to_string(const char* filename) {
-    FILE *f = fopen(filename, "r");
-    if (!f) return NULL;
-    fseek(f, 0, SEEK_END);
-    long length = ftell(f);
-    fseek(f, 0, SEEK_SET);
-    char *buffer = (char*)malloc(length + 1);
-    if (buffer) fread(buffer, 1, length, f);
-    buffer[length] = '\0';
-    fclose(f);
-    return buffer;
-}
-
-// ====================================================================
 // 【新增】Plover -> LaBRADOR 核心联调函数
 // ====================================================================
 void run_plover_labrador_zkp(const char* json_filepath) {
@@ -444,10 +449,10 @@ void run_plover_labrador_zkp(const char* json_filepath) {
 
     // 步骤 B: 使用底层的安全转化 API，将连续的 int64_t 自动映射到分块的 polx 结构中
     // 这里的参数为 (目标指针, 块数(比如2048/64), 扩展度, 数据源)
-    polxvec_fromint64vec(wt.s[0], PLOVER_N / 64, DEG, z2_arr); // W_0 = z2
-    polxvec_fromint64vec(wt.s[1], PLOVER_N / 64, DEG, c1_arr); // W_1 = c1
-    polxvec_fromint64vec(wt.s[2], PLOVER_N / 64, DEG, z1_arr); // W_2 = z1
-    polxvec_fromint64vec(wt.s[3], PLOVER_N / 64, DEG, k_arr);  // W_3 = k
+    polxvec_fromint64vec((polx *)wt.s[0], PLOVER_N / 64, DEG, z2_arr); // W_0 = z2
+    polxvec_fromint64vec((polx *)wt.s[1], PLOVER_N / 64, DEG, c1_arr); // W_1 = c1
+    polxvec_fromint64vec((polx *)wt.s[2], PLOVER_N / 64, DEG, z1_arr); // W_2 = z1
+    polxvec_fromint64vec((polx *)wt.s[3], PLOVER_N / 64, DEG, k_arr);  // W_3 = k
 
     // 释放临时内存
     free(z2_arr);
@@ -480,7 +485,7 @@ void run_plover_labrador_zkp(const char* json_filepath) {
             // LaBRADOR 的证明通常在 50KB - 200KB 之间，分配 500KB 绝对够用
             uint8_t *proof_buf = (uint8_t *)malloc(500000); 
             size_t proof_sz = pack_composite(proof_buf, &p); 
-            printf("[+] 证明原始大小: %zu bytes (%.2f KB)\n", proof_sz, (double)proof_sz / 1024.0);
+            printf("[+] 证明压缩大小: %.2f KB\n", p.size);
             free(proof_buf);
 
             // --- 测速 3: 证明验证 (Verify) ---
