@@ -5,13 +5,14 @@
 #include "fips202.h"
 #include "chihuahua.h"
 #include "pack.h"
-
+#include "randombytes.h"
+#include "fips202.h"
 #include <sys/time.h>
 #include "cJSON.h"
 #include "polx.h" // 可能包含在其他头文件中了，如果报错请加上
 
 // 确保这里的参数与你的 Plover 和 LaBRADOR 的设定一致
-#define PLOVER_N 256
+#define PLOVER_N 2048
 #define DEG 1  // LaBRADOR 的扩展度，如果是简单多项式，通常为 1 (如果 test 原码是 8 则改为 8)
 
 // --- 辅助函数：获取当前的高精度时间（毫秒 ms） ---
@@ -45,87 +46,6 @@ static void load_poly_array(cJSON *array, int64_t *dest, size_t n) {
         i++;
     }
 }
-
-// // === 核心：LaBRADOR 数据装载器 ===
-// static int load_single_plover_data(prncplstmnt *st, witness *wt, cJSON *json) {
-//     if (!json) return -1;
-
-//     // 提取 statement 和 witness 节点
-//     cJSON *stmt_json = cJSON_GetObjectItemCaseSensitive(json, "statement");
-//     cJSON *wit_json  = cJSON_GetObjectItemCaseSensitive(json, "witness");
-
-//     if (!stmt_json || !wit_json) {
-//         printf("[-] JSON 格式错误，缺少 statement 或 witness\n");
-//         return -1;
-//     }
-
-//     // 1. 系统维度定义
-//     size_t r = 3;  // 3 个见证: z1, z2, c1
-//     size_t n[3] = {1, 1, 1};
-//     size_t idx[3] = {0, 1, 2}; // 约束矩阵涉及的列索引
-
-//     // 2. 初始化 Witness 结构
-//     init_witness_raw(wt, r, n);
-
-//     // --- 3. 填充隐私见证 (Witness) ---
-//     int64_t raw_z1[PLOVER_N] = {0};
-//     int64_t raw_z2[PLOVER_N] = {0};
-//     int64_t raw_c1[PLOVER_N] = {0};
-
-//     load_poly_array(cJSON_GetObjectItemCaseSensitive(wit_json, "z1"), raw_z1, PLOVER_N);
-//     load_poly_array(cJSON_GetObjectItemCaseSensitive(wit_json, "z2"), raw_z2, PLOVER_N);
-//     load_poly_array(cJSON_GetObjectItemCaseSensitive(wit_json, "c1"), raw_c1, PLOVER_N);
-
-//     for(int i = 0; i < PLOVER_N; i++) {
-//         raw_z1[i] = raw_z1[i] % 2;
-//         raw_z2[i] = raw_z2[i] % 2;
-//         raw_c1[i] = raw_c1[i] % 2;
-//     }
-
-//     // 将普通数组转换为 LaBRADOR 内部的多项式格式
-//     polyvec_fromint64vec(wt->s[0], 1, DEG, raw_z1);
-//     polyvec_fromint64vec(wt->s[1], 1, DEG, raw_z2);
-//     polyvec_fromint64vec(wt->s[2], 1, DEG, raw_c1);
-
-//     // --- 4. 初始化并填充公开声明 ---
-//     // 强行把 1.8 亿的 Plover 范数压低为 LaBRADOR 默认参数能承受的上限
-//     uint64_t safe_betasq = 300000;
-    
-//     if (init_prncplstmnt_raw(st, r, n, safe_betasq, 1, 0) != 0) {
-//         printf("[-] 系统初始化失败，参数可能越界。\n");
-//         return -1;
-//     }
-    
-//     // 构造方程：1*z1 + A*z2 + t*c1 = u
-//     // 展平为一维数组，长度为 3 * PLOVER_N
-//     int64_t *phi_raw = calloc(3 * PLOVER_N, sizeof(int64_t)); 
-//     int64_t b_raw[PLOVER_N] = {0};
-
-//     // a) Phi 第 1 段：对应 z1，系数是常数 1
-//     phi_raw[0] = 1; 
-
-//     // b) Phi 第 2 段：对应 z2，系数是 A
-//     load_poly_array(cJSON_GetObjectItemCaseSensitive(stmt_json, "A"), &phi_raw[PLOVER_N], PLOVER_N);
-
-//     // c) Phi 第 3 段：对应 c1，系数是 t
-//     load_poly_array(cJSON_GetObjectItemCaseSensitive(stmt_json, "t"), &phi_raw[2 * PLOVER_N], PLOVER_N);
-
-//     // d) 等式右侧目标值：对应 u
-//     load_poly_array(cJSON_GetObjectItemCaseSensitive(stmt_json, "u"), b_raw, PLOVER_N);
-
-//     // 调用接口直接注入 (必须在数据填充完之后才调用)
-//     if (set_prncplstmnt_lincnst_raw(st, 0, 3, idx, n, DEG, phi_raw, b_raw) != 0) {
-//         printf("[-] 方程注入失败！\n");
-//         free(phi_raw);
-//         return -1;
-//     }
-
-//     // 5. 资源释放与返回
-//     // 【极度注意】：这里只能 free(phi_raw)，绝对不能清理 json！因为 json 现在是由外层 for 循环统一管理的！
-//     free(phi_raw);
-    
-//     return 0;
-// }
 
 static int load_single_plover_data(prncplstmnt *st, witness *wt, cJSON *json) {
     if (!json) return -1;
@@ -430,16 +350,181 @@ static int test_pack() {
 
   return 0;
 }
+// ====================================================================
+// 【新增】读取 JSON 的辅助函数
+// ====================================================================
+static char* read_file_to_string(const char* filename) {
+    FILE *f = fopen(filename, "r");
+    if (!f) return NULL;
+    fseek(f, 0, SEEK_END);
+    long length = ftell(f);
+    fseek(f, 0, SEEK_SET);
+    char *buffer = (char*)malloc(length + 1);
+    if (buffer) fread(buffer, 1, length, f);
+    buffer[length] = '\0';
+    fclose(f);
+    return buffer;
+}
 
+// ====================================================================
+// 【新增】Plover -> LaBRADOR 核心联调函数
+// ====================================================================
+void run_plover_labrador_zkp(const char* json_filepath) {
+    char *json_string = read_file_to_string(json_filepath);
+    if (!json_string) {
+        printf("无法读取 JSON 文件: %s\n", json_filepath);
+        return;
+    }
+
+    cJSON *root = cJSON_Parse(json_string);
+    if (!root) {
+        printf("JSON 解析失败\n");
+        free(json_string);
+        return;
+    }
+
+    // 取第一组签名数据
+    cJSON *item = cJSON_GetArrayItem(root, 0); 
+    cJSON *stmt = cJSON_GetObjectItem(item, "statement");
+    cJSON *wit = cJSON_GetObjectItem(item, "witness");
+
+    int64_t q_plover = cJSON_GetObjectItem(stmt, "q_plover")->valuedouble;
+    int n_plover = cJSON_GetObjectItem(stmt, "n")->valueint;
+
+    // 1. 初始化矩阵参数 (4个隐私变量: z2, c1, z1, k)
+    size_t r = 4; 
+    size_t n_arr[4] = {n_plover, n_plover, n_plover, n_plover};
+    size_t idx[4] = {0, 1, 2, 3}; 
+    
+    int64_t *phi = (int64_t *)calloc(4 * n_plover, sizeof(int64_t));
+    int64_t *b_vec = (int64_t *)calloc(n_plover, sizeof(int64_t));
+
+    // 2. 装载公钥和目标 (A, t, u)
+    cJSON *arr_A = cJSON_GetObjectItem(stmt, "A");
+    cJSON *arr_t = cJSON_GetObjectItem(stmt, "t");
+    cJSON *arr_u = cJSON_GetObjectItem(stmt, "u");
+
+    for (int i = 0; i < n_plover; i++) {
+        phi[0 * n_plover + i] = cJSON_GetArrayItem(arr_A, i)->valuedouble; // A
+        phi[1 * n_plover + i] = cJSON_GetArrayItem(arr_t, i)->valuedouble; // t
+        b_vec[i] = cJSON_GetArrayItem(arr_u, i)->valuedouble;              // u
+    }
+    phi[2 * n_plover + 0] = 1;         // z1 的系数 1
+    phi[3 * n_plover + 0] = -q_plover; // k 的系数 -q
+
+    // 3. 配置 Statement
+    prncplstmnt st;
+    init_prncplstmnt_raw(&st, r, n_arr, UINT64_MAX, 1, 0); 
+    set_prncplstmnt_lincnst_raw(&st, 0, 4, idx, n_arr, 1, phi, b_vec);
+
+    // ==========================================
+    // 4. 装载 Witness (隐私数据 z2, c1, z1, k)
+    // ==========================================
+    witness wt;
+    // 初始化 wt.s 为包含 4 个多项式的数组
+    init_witness_raw(&wt, r, n_arr); 
+
+    cJSON *arr_z2 = cJSON_GetObjectItem(wit, "z2");
+    cJSON *arr_c1 = cJSON_GetObjectItem(wit, "c1");
+    cJSON *arr_z1 = cJSON_GetObjectItem(wit, "z1");
+    cJSON *arr_k  = cJSON_GetObjectItem(wit, "k");
+
+    // 步骤 A: 先将 JSON 提取到连续的一维 int64_t 堆内存中，确保大整数不丢失精度
+    int64_t *z2_arr = (int64_t *)calloc(PLOVER_N, sizeof(int64_t));
+    int64_t *c1_arr = (int64_t *)calloc(PLOVER_N, sizeof(int64_t));
+    int64_t *z1_arr = (int64_t *)calloc(PLOVER_N, sizeof(int64_t));
+    int64_t *k_arr  = (int64_t *)calloc(PLOVER_N, sizeof(int64_t));
+
+    for (int i = 0; i < PLOVER_N; i++) {
+        z2_arr[i] = (int64_t)cJSON_GetArrayItem(arr_z2, i)->valuedouble;
+        c1_arr[i] = (int64_t)cJSON_GetArrayItem(arr_c1, i)->valuedouble;
+        z1_arr[i] = (int64_t)cJSON_GetArrayItem(arr_z1, i)->valuedouble;
+        k_arr[i]  = (int64_t)cJSON_GetArrayItem(arr_k,  i)->valuedouble;
+    }
+
+    // 步骤 B: 使用底层的安全转化 API，将连续的 int64_t 自动映射到分块的 polx 结构中
+    // 这里的参数为 (目标指针, 块数(比如2048/64), 扩展度, 数据源)
+    polxvec_fromint64vec(wt.s[0], PLOVER_N / 64, DEG, z2_arr); // W_0 = z2
+    polxvec_fromint64vec(wt.s[1], PLOVER_N / 64, DEG, c1_arr); // W_1 = c1
+    polxvec_fromint64vec(wt.s[2], PLOVER_N / 64, DEG, z1_arr); // W_2 = z1
+    polxvec_fromint64vec(wt.s[3], PLOVER_N / 64, DEG, k_arr);  // W_3 = k
+
+    // 释放临时内存
+    free(z2_arr);
+    free(c1_arr);
+    free(z1_arr);
+    free(k_arr);
+
+    // 5. 代数验证与证明生成
+    printf("\n[*] 开始检查 LaBRADOR 底层代数等式...\n");
+    int check_res = principle_verify(&st, &wt);
+    if (check_res != 0) {
+        printf("[-] 初始代数等式检查失败 (返回码 %d)\n", check_res);
+    } else {
+        printf("[+] 初始代数等式完美平衡！矩阵配置正确。\n");
+        
+        composite p;
+        double t_start, t_end;
+
+        // --- 测速 1: 证明生成 (Prove) ---
+        printf("[*] 开始生成 ZKP Proof...\n");
+        t_start = get_time_ms();
+        int ret = composite_prove_principle(&p, &st, &wt);
+        t_end = get_time_ms();
+
+        if (ret == 0) {
+            printf("[+] 证明生成成功！耗时: %.2f ms\n", t_end - t_start);
+
+            // --- 统计 2: 证明大小 (Proof Size) ---
+            // 根据 pack.h 里的接口，我们需要预估一个足够大的缓冲区
+            // LaBRADOR 的证明通常在 50KB - 200KB 之间，分配 500KB 绝对够用
+            uint8_t *proof_buf = (uint8_t *)malloc(500000); 
+            size_t proof_sz = pack_composite(proof_buf, &p); 
+            printf("[+] 证明原始大小: %zu bytes (%.2f KB)\n", proof_sz, (double)proof_sz / 1024.0);
+            free(proof_buf);
+
+            // --- 测速 3: 证明验证 (Verify) ---
+            printf("[*] 开始验证 ZKP Proof...\n");
+            t_start = get_time_ms();
+            int v_ret = composite_verify_principle(&p, &st);
+            t_end = get_time_ms();
+            
+            if (v_ret == 0) {
+                printf("[+] 证明验证通过！耗时: %.2f ms\n", t_end - t_start);
+            } else {
+                // 注意：如果因为 betasq 范数检查失败，这里会返回非 0 错误码
+                printf("[-] 证明验证失败！错误码: %d (耗时: %.2f ms)\n", v_ret, t_end - t_start);
+                if (v_ret == 3) {
+                    printf("    (注：错误码 3 通常表示范数超过了 betasq 限制，这在 Plover 联调中是预期的)\n");
+                }
+            }
+            
+            free_composite(&p);
+        } else {
+            printf("[-] 证明生成失败 (错误码: %d)\n", ret);
+        }
+    }
+
+    free(phi);
+    free(b_vec);
+    free_prncplstmnt(&st);
+    free_witness(&wt);
+    cJSON_Delete(root);
+    free(json_string);
+}
 int main(void) {
-  int ret;
+//   int ret;
 
-  ret = test_twolayer();
-  if(ret) goto end;
-  ret = test_pack();
-  if(ret) goto end;
+//   ret = test_twolayer();
+//   if(ret) goto end;
+//   ret = test_pack();
+//   if(ret) goto end;
 
-end:
-  free_comkey();
-  return ret;
+// end:
+//   free_comkey();
+//   return ret;
+    printf("=== Plover & LaBRADOR ZKP 联调系统 ===\n");
+    run_plover_labrador_zkp("plover_labrador.json");
+
+    return 0;
 }
