@@ -137,37 +137,44 @@ static int load_single_plover_data(prncplstmnt *st, witness *wt, cJSON *json) {
         return -1;
     }
 
+    // ==========================================
+    // 🌟 终极破局：Rank Padding（维度填充）
+    // 把多项式个数从 1 扩充到 16，满足 LaBRADOR 压缩引擎的最低吃水线！
+    // 彻底消灭 3 / 11 = 0 导致的除以零崩溃！
+    // ==========================================
     size_t r = 3;  
-    size_t n[3] = {1, 1, 1};
+    size_t n[3] = {16, 16, 16}; // <--- 核心修改点
     size_t idx[3] = {0, 1, 2}; 
 
+    // 初始化时，底层会自动分配 16 个多项式的空间并清零
     init_witness_raw(wt, r, n);
 
-    
     int64_t raw_z1[PLOVER_N] = {0};
     int64_t raw_z2[PLOVER_N] = {0};
     int64_t raw_c1[PLOVER_N] = {0};
     
-    // 给 z1 赋 16 个 1（确保有足够安全的范数，防止 log2(0)）
+    // 给第一个多项式赋 16 个 1（保持安全范数）
     for(int i = 0; i < 16; i++) {
         raw_z1[i] = 1;
     }
-    // z2 和 c1 保持全 0
+    // z2 和 c1 依然全 0
     
-    int64_t *phi_raw = calloc(3 * PLOVER_N, sizeof(int64_t)); 
+    // 因为 n 变成了 16，phi_raw 必须容纳 16+16+16 = 48 个多项式
+    int64_t *phi_raw = calloc(48 * PLOVER_N, sizeof(int64_t)); 
     int64_t b_raw[PLOVER_N] = {0}; 
 
-    // 约束系数：1 * z1 + 1 * z2 + 1 * c1
-    phi_raw[0] = 1;                    
-    phi_raw[PLOVER_N] = 1;             
-    phi_raw[2 * PLOVER_N] = 1;         
+    // 只给每组的【第 1 个】多项式的系数设为 1，后面 15 个保持为 0 (0参与点乘不影响结果)
+    phi_raw[0] = 1;                             // 第 1 组的第 1 个 
+    phi_raw[16 * PLOVER_N] = 1;                 // 第 2 组的第 1 个
+    phi_raw[32 * PLOVER_N] = 1;                 // 第 3 组的第 1 个
 
-    // 目标值 u 必须完美等于 1 * z1
+    // 目标值 u 等于 1 * z1
     for(int i = 0; i < 16; i++) {
         b_raw[i] = 1;
     }
 
     // --- 数据装载 ---
+    // polyvec_fromint64vec 的参数2是 len，我们只装载第 1 个多项式，其他的底层默认为 0
     polyvec_fromint64vec(wt->s[0], 1, DEG, raw_z1);
     polyvec_fromint64vec(wt->s[1], 1, DEG, raw_z2);
     polyvec_fromint64vec(wt->s[2], 1, DEG, raw_c1);
@@ -186,7 +193,6 @@ static int load_single_plover_data(prncplstmnt *st, witness *wt, cJSON *json) {
     free(phi_raw);
     return 0;
 }
-
 
 static void prepare_linear(prncplstmnt *st, witness *wt) {
   size_t i,j,l;
