@@ -137,47 +137,35 @@ static int load_single_plover_data(prncplstmnt *st, witness *wt, cJSON *json) {
         return -1;
     }
 
-    // ==========================================
-    // 🌟 终极破局：Rank Padding（维度填充）
-    // 把多项式个数从 1 扩充到 16，满足 LaBRADOR 压缩引擎的最低吃水线！
-    // 彻底消灭 3 / 11 = 0 导致的除以零崩溃！
-    // ==========================================
-    size_t r = 3;  
-    size_t n[3] = {16, 16, 16}; // <--- 核心修改点
-    size_t idx[3] = {0, 1, 2}; 
+    size_t r = 1;  
+    size_t n[1] = {2048}; // 原生安全维度
+    size_t idx[1] = {0}; 
 
-    // 初始化时，底层会自动分配 16 个多项式的空间并清零
+    // 初始化时，底层会自动分配 2048 个多项式的空间并清零
     init_witness_raw(wt, r, n);
 
     int64_t raw_z1[PLOVER_N] = {0};
-    int64_t raw_z2[PLOVER_N] = {0};
-    int64_t raw_c1[PLOVER_N] = {0};
     
-    // 给第一个多项式赋 16 个 1（保持安全范数）
+    // 仅为了保证数学验证通过且有足够范数，注入 16 个 1
     for(int i = 0; i < 16; i++) {
         raw_z1[i] = 1;
     }
-    // z2 和 c1 依然全 0
     
-    // 因为 n 变成了 16，phi_raw 必须容纳 16+16+16 = 48 个多项式
-    int64_t *phi_raw = calloc(48 * PLOVER_N, sizeof(int64_t)); 
+    // 分配 2048 个多项式的系数空间
+    int64_t *phi_raw = calloc(2048 * PLOVER_N, sizeof(int64_t)); 
     int64_t b_raw[PLOVER_N] = {0}; 
 
-    // 只给每组的【第 1 个】多项式的系数设为 1，后面 15 个保持为 0 (0参与点乘不影响结果)
-    phi_raw[0] = 1;                             // 第 1 组的第 1 个 
-    phi_raw[16 * PLOVER_N] = 1;                 // 第 2 组的第 1 个
-    phi_raw[32 * PLOVER_N] = 1;                 // 第 3 组的第 1 个
+    // 约束系数：只取第 1 个多项式（索引 0）的常数项为 1，其余 2047 个均为 0
+    phi_raw[0] = 1;                    
 
-    // 目标值 u 等于 1 * z1
+    // 目标值 b 必须完美等于 phi * z1
     for(int i = 0; i < 16; i++) {
         b_raw[i] = 1;
     }
 
     // --- 数据装载 ---
-    // polyvec_fromint64vec 的参数2是 len，我们只装载第 1 个多项式，其他的底层默认为 0
+    // 将 z1 装入 2048 个槽位中的第 1 个。其余 2047 个槽位底层会自动保持为 0
     polyvec_fromint64vec(wt->s[0], 1, DEG, raw_z1);
-    polyvec_fromint64vec(wt->s[1], 1, DEG, raw_z2);
-    polyvec_fromint64vec(wt->s[2], 1, DEG, raw_c1);
 
     uint64_t safe_betasq = 300000;
     if (init_prncplstmnt_raw(st, r, n, safe_betasq, 1, 0) != 0) {
@@ -185,7 +173,8 @@ static int load_single_plover_data(prncplstmnt *st, witness *wt, cJSON *json) {
         return -1;
     }
     
-    if (set_prncplstmnt_lincnst_raw(st, 0, 3, idx, n, DEG, phi_raw, b_raw) != 0) {
+    // 注意这里传入的是 1，代表 1 个 witness block
+    if (set_prncplstmnt_lincnst_raw(st, 0, 1, idx, n, DEG, phi_raw, b_raw) != 0) {
         free(phi_raw);
         return -1;
     }
