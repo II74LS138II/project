@@ -130,7 +130,6 @@ static void load_poly_array(cJSON *array, int64_t *dest, size_t n) {
 static int load_single_plover_data(prncplstmnt *st, witness *wt, cJSON *json) {
     if (!json) return -1;
 
-    // 依然保留 JSON 检查，确保外层循环正常计数
     cJSON *stmt_json = cJSON_GetObjectItemCaseSensitive(json, "statement");
     cJSON *wit_json  = cJSON_GetObjectItemCaseSensitive(json, "witness");
     if (!stmt_json || !wit_json) {
@@ -144,27 +143,19 @@ static int load_single_plover_data(prncplstmnt *st, witness *wt, cJSON *json) {
 
     init_witness_raw(wt, r, n);
 
+    
     int64_t raw_z1[PLOVER_N] = {0};
     int64_t raw_z2[PLOVER_N] = {0};
     int64_t raw_c1[PLOVER_N] = {0};
-    int64_t *phi_raw = calloc(3 * PLOVER_N, sizeof(int64_t)); 
-    int64_t b_raw[PLOVER_N] = {0};
-
-
-    // 构造一个常数项多项式等式：1*1 + 1*1 + 1*1 = 3
     
-    // 只给多项式的第 0 项（常数项）赋值为 1，其余全是 0
-    raw_z1[0] = 1;
-    raw_z2[0] = 1;
-    raw_c1[0] = 1;
+    int64_t *phi_raw = calloc(3 * PLOVER_N, sizeof(int64_t)); 
+    int64_t b_raw[PLOVER_N] = {0}; // 等式右边 u 也是 0
 
-    // Phi_raw 里存放的是方程的系数
-    phi_raw[0] = 1;                    // z1 的系数 = 1
-    phi_raw[PLOVER_N] = 1;             // A 的系数 = 1
-    phi_raw[2 * PLOVER_N] = 1;         // t 的系数 = 1
-
-    // 等式右边的目标值： u = 3
-    b_raw[0] = 3; 
+    // 为了让约束方程有效（矩阵不为空），我们把公开系数 phi 设为 1
+    // 这样等式就变成了： 1*0 + 1*0 + 1*0 = 0 
+    phi_raw[0] = 1;                    
+    phi_raw[PLOVER_N] = 1;             
+    phi_raw[2 * PLOVER_N] = 1;         
 
     // --- 数据装载 ---
     polyvec_fromint64vec(wt->s[0], 1, DEG, raw_z1);
