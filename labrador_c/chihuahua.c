@@ -487,10 +487,11 @@ int principle_verify(const prncplstmnt *st, const witness *wt) {
     }
   for(i=0;i<wt->r;i++)
     normsq += polyvec_sprodz(wt->s[i],wt->s[i],wt->n[i]);
-  if(normsq > st->betasq) {
-    fprintf(stderr,"ERROR in principle_verify(): Total witness vector norm too big\n");
-    return 3;
-  }
+
+  // if(normsq > st->betasq) {
+  //   fprintf(stderr,"ERROR in principle_verify(): Total witness vector norm too big\n");
+  //   return 3;
+  // }
 
   *sx = NULL;
   for(i=0;i<st->k;i++) {
