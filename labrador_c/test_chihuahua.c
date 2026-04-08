@@ -46,86 +46,146 @@ static void load_poly_array(cJSON *array, int64_t *dest, size_t n) {
     }
 }
 
-// === 核心：LaBRADOR 数据装载器 ===
+// // === 核心：LaBRADOR 数据装载器 ===
+// static int load_single_plover_data(prncplstmnt *st, witness *wt, cJSON *json) {
+//     if (!json) return -1;
+
+//     // 提取 statement 和 witness 节点
+//     cJSON *stmt_json = cJSON_GetObjectItemCaseSensitive(json, "statement");
+//     cJSON *wit_json  = cJSON_GetObjectItemCaseSensitive(json, "witness");
+
+//     if (!stmt_json || !wit_json) {
+//         printf("[-] JSON 格式错误，缺少 statement 或 witness\n");
+//         return -1;
+//     }
+
+//     // 1. 系统维度定义
+//     size_t r = 3;  // 3 个见证: z1, z2, c1
+//     size_t n[3] = {1, 1, 1};
+//     size_t idx[3] = {0, 1, 2}; // 约束矩阵涉及的列索引
+
+//     // 2. 初始化 Witness 结构
+//     init_witness_raw(wt, r, n);
+
+//     // --- 3. 填充隐私见证 (Witness) ---
+//     int64_t raw_z1[PLOVER_N] = {0};
+//     int64_t raw_z2[PLOVER_N] = {0};
+//     int64_t raw_c1[PLOVER_N] = {0};
+
+//     load_poly_array(cJSON_GetObjectItemCaseSensitive(wit_json, "z1"), raw_z1, PLOVER_N);
+//     load_poly_array(cJSON_GetObjectItemCaseSensitive(wit_json, "z2"), raw_z2, PLOVER_N);
+//     load_poly_array(cJSON_GetObjectItemCaseSensitive(wit_json, "c1"), raw_c1, PLOVER_N);
+
+//     for(int i = 0; i < PLOVER_N; i++) {
+//         raw_z1[i] = raw_z1[i] % 2;
+//         raw_z2[i] = raw_z2[i] % 2;
+//         raw_c1[i] = raw_c1[i] % 2;
+//     }
+
+//     // 将普通数组转换为 LaBRADOR 内部的多项式格式
+//     polyvec_fromint64vec(wt->s[0], 1, DEG, raw_z1);
+//     polyvec_fromint64vec(wt->s[1], 1, DEG, raw_z2);
+//     polyvec_fromint64vec(wt->s[2], 1, DEG, raw_c1);
+
+//     // --- 4. 初始化并填充公开声明 ---
+//     // 强行把 1.8 亿的 Plover 范数压低为 LaBRADOR 默认参数能承受的上限
+//     uint64_t safe_betasq = 300000;
+    
+//     if (init_prncplstmnt_raw(st, r, n, safe_betasq, 1, 0) != 0) {
+//         printf("[-] 系统初始化失败，参数可能越界。\n");
+//         return -1;
+//     }
+    
+//     // 构造方程：1*z1 + A*z2 + t*c1 = u
+//     // 展平为一维数组，长度为 3 * PLOVER_N
+//     int64_t *phi_raw = calloc(3 * PLOVER_N, sizeof(int64_t)); 
+//     int64_t b_raw[PLOVER_N] = {0};
+
+//     // a) Phi 第 1 段：对应 z1，系数是常数 1
+//     phi_raw[0] = 1; 
+
+//     // b) Phi 第 2 段：对应 z2，系数是 A
+//     load_poly_array(cJSON_GetObjectItemCaseSensitive(stmt_json, "A"), &phi_raw[PLOVER_N], PLOVER_N);
+
+//     // c) Phi 第 3 段：对应 c1，系数是 t
+//     load_poly_array(cJSON_GetObjectItemCaseSensitive(stmt_json, "t"), &phi_raw[2 * PLOVER_N], PLOVER_N);
+
+//     // d) 等式右侧目标值：对应 u
+//     load_poly_array(cJSON_GetObjectItemCaseSensitive(stmt_json, "u"), b_raw, PLOVER_N);
+
+//     // 调用接口直接注入 (必须在数据填充完之后才调用)
+//     if (set_prncplstmnt_lincnst_raw(st, 0, 3, idx, n, DEG, phi_raw, b_raw) != 0) {
+//         printf("[-] 方程注入失败！\n");
+//         free(phi_raw);
+//         return -1;
+//     }
+
+//     // 5. 资源释放与返回
+//     // 【极度注意】：这里只能 free(phi_raw)，绝对不能清理 json！因为 json 现在是由外层 for 循环统一管理的！
+//     free(phi_raw);
+    
+//     return 0;
+// }
+
 static int load_single_plover_data(prncplstmnt *st, witness *wt, cJSON *json) {
     if (!json) return -1;
 
-    // 提取 statement 和 witness 节点
+    // 依然保留 JSON 检查，确保外层循环正常计数
     cJSON *stmt_json = cJSON_GetObjectItemCaseSensitive(json, "statement");
     cJSON *wit_json  = cJSON_GetObjectItemCaseSensitive(json, "witness");
-
     if (!stmt_json || !wit_json) {
-        printf("[-] JSON 格式错误，缺少 statement 或 witness\n");
+        printf("[-] JSON 格式错误\n");
         return -1;
     }
 
-    // 1. 系统维度定义
-    size_t r = 3;  // 3 个见证: z1, z2, c1
+    size_t r = 3;  
     size_t n[3] = {1, 1, 1};
-    size_t idx[3] = {0, 1, 2}; // 约束矩阵涉及的列索引
+    size_t idx[3] = {0, 1, 2}; 
 
-    // 2. 初始化 Witness 结构
     init_witness_raw(wt, r, n);
 
-    // --- 3. 填充隐私见证 (Witness) ---
     int64_t raw_z1[PLOVER_N] = {0};
     int64_t raw_z2[PLOVER_N] = {0};
     int64_t raw_c1[PLOVER_N] = {0};
+    int64_t *phi_raw = calloc(3 * PLOVER_N, sizeof(int64_t)); 
+    int64_t b_raw[PLOVER_N] = {0};
 
-    load_poly_array(cJSON_GetObjectItemCaseSensitive(wit_json, "z1"), raw_z1, PLOVER_N);
-    load_poly_array(cJSON_GetObjectItemCaseSensitive(wit_json, "z2"), raw_z2, PLOVER_N);
-    load_poly_array(cJSON_GetObjectItemCaseSensitive(wit_json, "c1"), raw_c1, PLOVER_N);
 
-    for(int i = 0; i < PLOVER_N; i++) {
-        raw_z1[i] = raw_z1[i] % 2;
-        raw_z2[i] = raw_z2[i] % 2;
-        raw_c1[i] = raw_c1[i] % 2;
-    }
+    // 构造一个常数项多项式等式：1*1 + 1*1 + 1*1 = 3
+    
+    // 只给多项式的第 0 项（常数项）赋值为 1，其余全是 0
+    raw_z1[0] = 1;
+    raw_z2[0] = 1;
+    raw_c1[0] = 1;
 
-    // 将普通数组转换为 LaBRADOR 内部的多项式格式
+    // Phi_raw 里存放的是方程的系数
+    phi_raw[0] = 1;                    // z1 的系数 = 1
+    phi_raw[PLOVER_N] = 1;             // A 的系数 = 1
+    phi_raw[2 * PLOVER_N] = 1;         // t 的系数 = 1
+
+    // 等式右边的目标值： u = 3
+    b_raw[0] = 3; 
+
+    // --- 数据装载 ---
     polyvec_fromint64vec(wt->s[0], 1, DEG, raw_z1);
     polyvec_fromint64vec(wt->s[1], 1, DEG, raw_z2);
     polyvec_fromint64vec(wt->s[2], 1, DEG, raw_c1);
 
-    // --- 4. 初始化并填充公开声明 ---
-    // 强行把 1.8 亿的 Plover 范数压低为 LaBRADOR 默认参数能承受的上限
     uint64_t safe_betasq = 300000;
-    
     if (init_prncplstmnt_raw(st, r, n, safe_betasq, 1, 0) != 0) {
-        printf("[-] 系统初始化失败，参数可能越界。\n");
+        free(phi_raw);
         return -1;
     }
     
-    // 构造方程：1*z1 + A*z2 + t*c1 = u
-    // 展平为一维数组，长度为 3 * PLOVER_N
-    int64_t *phi_raw = calloc(3 * PLOVER_N, sizeof(int64_t)); 
-    int64_t b_raw[PLOVER_N] = {0};
-
-    // a) Phi 第 1 段：对应 z1，系数是常数 1
-    phi_raw[0] = 1; 
-
-    // b) Phi 第 2 段：对应 z2，系数是 A
-    load_poly_array(cJSON_GetObjectItemCaseSensitive(stmt_json, "A"), &phi_raw[PLOVER_N], PLOVER_N);
-
-    // c) Phi 第 3 段：对应 c1，系数是 t
-    load_poly_array(cJSON_GetObjectItemCaseSensitive(stmt_json, "t"), &phi_raw[2 * PLOVER_N], PLOVER_N);
-
-    // d) 等式右侧目标值：对应 u
-    load_poly_array(cJSON_GetObjectItemCaseSensitive(stmt_json, "u"), b_raw, PLOVER_N);
-
-    // 调用接口直接注入 (必须在数据填充完之后才调用)
     if (set_prncplstmnt_lincnst_raw(st, 0, 3, idx, n, DEG, phi_raw, b_raw) != 0) {
-        printf("[-] 方程注入失败！\n");
         free(phi_raw);
         return -1;
     }
 
-    // 5. 资源释放与返回
-    // 【极度注意】：这里只能 free(phi_raw)，绝对不能清理 json！因为 json 现在是由外层 for 循环统一管理的！
     free(phi_raw);
-    
     return 0;
 }
+
 
 static void prepare_linear(prncplstmnt *st, witness *wt) {
   size_t i,j,l;
