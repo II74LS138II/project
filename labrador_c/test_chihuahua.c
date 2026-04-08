@@ -37,27 +37,22 @@ static double get_time_ms(void) {
 //     data[length] = '\0';
 //     return data;
 // }
-static char* read_file_to_string(const char* filename) {
-    FILE *f = fopen(filename, "rb"); // 建议用 "rb" 以二进制模式读取，防止换行符转换干扰 JSON 解析
-    if (!f) return NULL;
 
+static char* read_file_to_string(const char* filename) {
+    FILE *f = fopen(filename, "rb");
+    if (!f) return NULL;
     fseek(f, 0, SEEK_END);
     long length = ftell(f);
     fseek(f, 0, SEEK_SET);
-
-    char *data = (char *)malloc(length + 1);
+    char *data = malloc(length + 1);
     if (data) {
-        size_t read_bytes = fread(data, 1, length, f);
-        data[read_bytes] = '\0'; // 使用实际读取的长度作为结尾
-        if (read_bytes < (size_t)length && ferror(f)) {
-            free(data);
-            data = NULL;
-        }
+        size_t r = fread(data, 1, length, f);
+        data[r] = '\0';
     }
-
     fclose(f);
     return data;
 }
+
 
 // --- 辅助函数：从 JSON 读取到 int64_t 数组 ---
 static void load_poly_array(cJSON *array, int64_t *dest, size_t n) {
@@ -485,10 +480,10 @@ void run_plover_labrador_zkp(const char* json_filepath) {
             // --- 统计 2: 证明大小 (Proof Size) ---
             // 根据 pack.h 里的接口，我们需要预估一个足够大的缓冲区
             // LaBRADOR 的证明通常在 50KB - 200KB 之间，分配 500KB 绝对够用
-            uint8_t *proof_buf = (uint8_t *)malloc(500000); 
-            size_t proof_sz = pack_composite(proof_buf, &p); 
+            // uint8_t *proof_buf = (uint8_t *)malloc(500000); 
+            // size_t proof_sz = pack_composite(proof_buf, &p); 
             printf("[+] 证明压缩大小: %.2f KB\n", p.size);
-            free(proof_buf);
+            // free(proof_buf);
 
             // --- 测速 3: 证明验证 (Verify) ---
             printf("[*] 开始验证 ZKP Proof...\n");

@@ -471,7 +471,7 @@ err:
 }
 
 int principle_verify(const prncplstmnt *st, const witness *wt) {
-  int ret;
+  int ret = 0;
   size_t i;
   uint64_t normsq = 0;
   polx *sx[wt->r];
@@ -493,7 +493,10 @@ int principle_verify(const prncplstmnt *st, const witness *wt) {
   //   return 3;
   // }
 
-  *sx = NULL;
+  //*sx = NULL;
+  for(i=0; i < wt->r; i++) {
+    sx[i] = NULL;
+  }
   for(i=0;i<st->k;i++) {
     ret = !sparsecnst_check(&st->cnst[i],sx,wt);
     if(ret) {
@@ -504,6 +507,11 @@ int principle_verify(const prncplstmnt *st, const witness *wt) {
   }
 
 end:
-  free(*sx);
+  for(i=0; i < wt->r; i++) {
+    if(sx[i]) {
+      free(sx[i]);
+      sx[i] = NULL;
+    }
+  }
   return ret;
 }
