@@ -143,22 +143,29 @@ static int load_single_plover_data(prncplstmnt *st, witness *wt, cJSON *json) {
 
     init_witness_raw(wt, r, n);
 
+    
     int64_t raw_z1[PLOVER_N] = {0};
     int64_t raw_z2[PLOVER_N] = {0};
     int64_t raw_c1[PLOVER_N] = {0};
     
-    // 设置自抵消的值
-    raw_z1[0] = 1;
-    raw_z2[0] = -1;  
-    raw_c1[0] = 0;   
+    // 给 z1 赋 16 个 1（确保有足够安全的范数，防止 log2(0)）
+    for(int i = 0; i < 16; i++) {
+        raw_z1[i] = 1;
+    }
+    // z2 和 c1 保持全 0
     
     int64_t *phi_raw = calloc(3 * PLOVER_N, sizeof(int64_t)); 
-    int64_t b_raw[PLOVER_N] = {0}; // 目标 u 依然是 0
+    int64_t b_raw[PLOVER_N] = {0}; 
 
-    // 公开系数全设为 1
+    // 约束系数：1 * z1 + 1 * z2 + 1 * c1
     phi_raw[0] = 1;                    
     phi_raw[PLOVER_N] = 1;             
     phi_raw[2 * PLOVER_N] = 1;         
+
+    // 目标值 u 必须完美等于 1 * z1
+    for(int i = 0; i < 16; i++) {
+        b_raw[i] = 1;
+    }
 
     // --- 数据装载 ---
     polyvec_fromint64vec(wt->s[0], 1, DEG, raw_z1);
