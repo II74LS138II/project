@@ -15,6 +15,8 @@
 #define PLOVER_N 2048
 #define DEG 1  // LaBRADOR 的扩展度，如果是简单多项式，通常为 1 (如果 test 原码是 8 则改为 8)
 
+void run_plover_labrador_zkp(const char* json_filepath);
+
 // --- 辅助函数：获取当前的高精度时间（毫秒 ms） ---
 static double get_time_ms(void) {
     struct timeval tv;
