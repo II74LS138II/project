@@ -160,7 +160,7 @@ int main(void) {
     printf("=== Plover & LaBRADOR 跨语言 ZKP 联调系统 ===\n");
     
     // 处理 Python 导出的 JSON
-    run_plover_labrador_zkp("plover_export.json");
+    run_plover_labrador_zkp("plover_labrador.json");
 
     return 0;
 }
